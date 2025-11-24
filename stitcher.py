@@ -56,8 +56,9 @@ def stitch_images(img1, img2):
 
     return result
 
-img1 = cv2.imread('img/P1011370.JPG')
-img2 = cv2.imread('img/P1011371.JPG')
+if __name__ == "__main__":
+    img1 = cv2.imread('img/P1011370.JPG')
+    img2 = cv2.imread('img/P1011371.JPG')
 
-panorama = stitch_images(img1, img2)
-cv2.imwrite('panorama_final.jpg', panorama)
+    panorama = stitch_images(img1, img2)
+    cv2.imwrite('panorama_final.jpg', panorama)
