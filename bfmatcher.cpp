@@ -7,60 +7,85 @@
 
 namespace py = pybind11;
 
-// Euclidean distance between two descriptor vectors
-double euclidean_distance(const py::array_t<float>& d1, const py::array_t<float>& d2, ssize_t idx1, ssize_t idx2) {
+// Compute Euclidean distance between two descriptor rows
+double euclidean_distance(const py::array_t<float> &d1,
+                          const py::array_t<float> &d2,
+                          int idx1, int idx2)
+{
     auto r1 = d1.unchecked<2>();
     auto r2 = d2.unchecked<2>();
-    ssize_t length = r1.shape(1);
+
+    int length = (int)r1.shape(1);
     double dist = 0.0;
-    for (ssize_t i = 0; i < length; ++i) {
+
+    for (int i = 0; i < length; i++) {
         double diff = r1(idx1, i) - r2(idx2, i);
         dist += diff * diff;
     }
+
     return std::sqrt(dist);
 }
 
-// k-NN matching (k=2)
-std::vector<std::vector<std::tuple<ssize_t, ssize_t, double>>> knn_match(
+// Basic brute-force k-NN matcher
+std::vector<std::vector<std::tuple<int, int, double>>> knn_match(
         py::array_t<float> des1,
         py::array_t<float> des2,
-        ssize_t k = 2) {
+        int k = 2)
+{
+    int n1 = (int)des1.shape(0);
+    int n2 = (int)des2.shape(0);
 
-    auto n1 = des1.shape(0);
-    auto n2 = des2.shape(0);
+    std::vector<std::vector<std::tuple<int, int, double>>> matches;
+    matches.reserve(n1);
 
-    std::vector<std::vector<std::tuple<ssize_t, ssize_t, double>>> matches;
+    for (int i = 0; i < n1; i++) {
+        std::vector<std::tuple<int, int, double>> dists;
+        dists.reserve(n2);
 
-    for (ssize_t i = 0; i < n1; ++i) {
-        // Compute distances to all descriptors in des2
-        std::vector<std::tuple<ssize_t, ssize_t, double>> dists; // (queryIdx, trainIdx, distance)
-        for (ssize_t j = 0; j < n2; ++j) {
+        // Compute distances from descriptor i to all descriptors in des2
+        for (int j = 0; j < n2; j++) {
             double dist = euclidean_distance(des1, des2, i, j);
-            dists.emplace_back(i, j, dist);
+            dists.push_back(std::make_tuple(i, j, dist));
         }
-        // Sort distances and keep top k
-        std::sort(dists.begin(), dists.end(), [](auto &a, auto &b) { return std::get<2>(a) < std::get<2>(b); });
-        std::vector<std::tuple<ssize_t, ssize_t, double>> topk(dists.begin(), dists.begin() + std::min(k, (ssize_t)dists.size()));
+
+        // Sort by distance
+        std::sort(dists.begin(), dists.end(),
+                  [](const std::tuple<int, int, double> &a,
+                     const std::tuple<int, int, double> &b)
+                  {
+                      return std::get<2>(a) < std::get<2>(b);
+                  });
+
+        // Take the top k matches
+        int num = std::min(k, (int)dists.size());
+        std::vector<std::tuple<int, int, double>> topk(dists.begin(),
+                                                       dists.begin() + num);
+
         matches.push_back(topk);
     }
+
     return matches;
 }
 
-// Ratio test
-std::vector<std::tuple<ssize_t, ssize_t, double>> ratio_test(
-        const std::vector<std::vector<std::tuple<ssize_t, ssize_t, double>>>& matches,
-        double ratio = 0.75) {
+// Lowe's ratio test
+std::vector<std::tuple<int, int, double>> ratio_test(
+        const std::vector<std::vector<std::tuple<int, int, double>>> &matches,
+        double ratio = 0.75)
+{
+    std::vector<std::tuple<int, int, double>> good_matches;
 
-    std::vector<std::tuple<ssize_t, ssize_t, double>> good_matches;
+    for (const auto &m_n : matches) {
+        if (m_n.size() < 2)
+            continue;
 
-    for (auto &m_n : matches) {
-        if (m_n.size() < 2) continue;
-        auto m = m_n[0];
-        auto n = m_n[1];
+        const auto &m = m_n[0];
+        const auto &n = m_n[1];
+
         if (std::get<2>(m) < ratio * std::get<2>(n)) {
             good_matches.push_back(m);
         }
     }
+
     return good_matches;
 }
 
